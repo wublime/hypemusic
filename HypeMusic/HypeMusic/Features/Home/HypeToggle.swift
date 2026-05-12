@@ -1,28 +1,29 @@
 import SwiftUI
 
 struct HypeToggle: View {
-    @Binding var selectedTab: Int // 0 for Discovery, 1 for Friends
-    
+    /// 0 = Discovery, 1 = Friends (independent of the bottom tab bar).
+    @Binding var discoveryFriendsMode: Int
+
     var body: some View {
         HStack(spacing: 0) {
             ForEach(["Discovery", "Friends"].indices, id: \.self) { index in
                 Text(["Discovery", "Friends"][index])
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(selectedTab == index ? .white : .gray)
+                    .foregroundColor(discoveryFriendsMode == index ? .white : .gray)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
                     .background(
                         ZStack {
-                            if selectedTab == index {
+                            if discoveryFriendsMode == index {
                                 RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color(hex: "#2C2C2E"))
+                                    .fill(Color(hexString: "#2C2C2E"))
                                     .matchedGeometryEffect(id: "tab", in: namespace)
                             }
                         }
                     )
                     .onTapGesture {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            selectedTab = index
+                            discoveryFriendsMode = index
                         }
                     }
             }

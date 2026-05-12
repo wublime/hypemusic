@@ -1,90 +1,54 @@
 import SwiftUI
 
 struct ContentView: View {
-    // 1. Initialize the Network Manager to talk to Python backend
-    @StateObject var networkManager = NetworkManager()
+    @StateObject private var networkManager = NetworkManager()
     @State private var selectedTab = 0
-    
+    @State private var discoveryFriendsMode = 0
+    @State private var showCreateSheet = false
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Color(hexString: "#0F0F10").ignoresSafeArea()
-                
-                // Use a single vertical stack so sections appear in the intended order
-                VStack(alignment: .leading, spacing: 24) {
-                    // Section Label
-                    Text("DROPPING THIS WEEK")
-                        .font(.system(size: 11, weight: .black))
-                        .tracking(1.5)
-                        .foregroundColor(.gray)
-                        .padding(.horizontal, 16)
-                    
-                    // The Horizontal Carousel
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 16) {
-                            // 2. Loop through the REAL releases from Python server
-                            if networkManager.releases.isEmpty {
-                                // Optional: Show placeholders while loading
-                                ProgressView()
-                                    .tint(.white)
-                                    .frame(width: 150, height: 200)
-                            } else {
-                                ForEach(networkManager.releases) { release in
-                                    ReleaseCard(
-                                        title: release.title,
-                                        artist: release.artist,
-                                        hype_score: release.hype_score,
-                                        countdown: release.countdown
-                                    )
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                    }
-                    .refreshable {
-                        await networkManager.fetchReleases()
-                    }
-                    
-                    // Place the toggle directly under the carousel as in the mock
-                    HypeToggle(selectedTab: $selectedTab)
-                    
-                    // Reviews Section
-                    Text("RECENT REVIEWS")
-                        .font(.system(size: 11, weight: .black))
-                        .tracking(1.5)
-                        .foregroundColor(.gray)
-                        .padding(.horizontal, 16)
 
-                    // Vertical list of review cards from mock data
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 12) {
-                            ForEach(mockReviewPosts) { post in
-                                ReviewCard(post: post)
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
+                Group {
+                    switch selectedTab {
+                    case 0:
+                        HomeView(
+                            networkManager: networkManager,
+                            discoveryFriendsMode: $discoveryFriendsMode
+                        )
+                    case 1:
+                        HypeFeedView(networkManager: networkManager)
+                    case 3:
+                        AlertsView()
+                    case 4:
+                        ProfileView()
+                    default:
+                        HomeView(
+                            networkManager: networkManager,
+                            discoveryFriendsMode: $discoveryFriendsMode
+                        )
                     }
-                    
-                    Spacer()
                 }
-                .padding(.top, 20)
             }
-            // 3. This triggers the Python "ping" as soon as the app appears
             .safeAreaInset(edge: .bottom) {
                 BottomTabBar(selectedTab: $selectedTab, plusAction: {
-                    // TODO: Handle central plus action
+                    showCreateSheet = true
                 })
             }
             .task {
                 await networkManager.fetchReleases()
+            }
+            .sheet(isPresented: $showCreateSheet) {
+                CreateOptionsSheet()
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Image(systemName: "calendar").foregroundColor(.white)
                 }
                 ToolbarItem(placement: .principal) {
-                    Text("hype")
+                    Text(principalTitle)
                         .font(.system(size: 22, weight: .black))
                         .foregroundColor(.white)
                 }
@@ -93,11 +57,54 @@ struct ContentView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
-            // Remove the default navigation bar background (white bar) so our dark background shows through
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
+    }
 
+    private var principalTitle: String {
+        switch selectedTab {
+        case 1: return "hype feed"
+        case 3: return "alerts"
+        case 4: return "profile"
+        default: return "hype"
+        }
+    }
+}
+
+struct CreateOptionsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Button {
+                    dismiss()
+                } label: {
+                    Label("Create Post", systemImage: "square.and.pencil")
+                }
+
+                Button {
+                    dismiss()
+                } label: {
+                    Label("Track Release", systemImage: "music.note.list")
+                }
+
+                Button {
+                    dismiss()
+                } label: {
+                    Label("Add to Hype List", systemImage: "star")
+                }
+            }
+            .navigationTitle("create")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("close") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 
@@ -110,7 +117,6 @@ struct BottomTabBar: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            // Bar background
             Rectangle()
                 .fill(Color(hexString: "#1A1A1C"))
                 .overlay(
@@ -122,11 +128,10 @@ struct BottomTabBar: View {
                 )
                 .ignoresSafeArea(edges: .bottom)
 
-            // Tab items
             HStack(alignment: .center, spacing: 0) {
                 TabButton(index: 0, title: "Home", system: "house", selectedTab: $selectedTab, accent: accent)
                 TabButton(index: 1, title: "Hype Feed", system: "flame", selectedTab: $selectedTab, accent: accent)
-                Spacer().frame(width: plusDiameter + 16) // gap reserved for the central plus button
+                Spacer().frame(width: plusDiameter + 16)
                 TabButton(index: 3, title: "Alerts", system: "bell", selectedTab: $selectedTab, accent: accent)
                 TabButton(index: 4, title: "Profile", system: "person", selectedTab: $selectedTab, accent: accent)
             }

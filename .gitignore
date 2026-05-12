@@ -1,15 +1,14 @@
-# --- Xcode / Swift ---
-build/
-DerivedData/
-*.xcuserstate
-xcuserdata/
 .DS_Store
 
-# --- Python ---
-venv/
-.venv/
-env/
-__pycache__/
-*.py[cod]
+# Xcode user-specific (anywhere)
+**/xcuserdata/
+**/*.xcuserstate
+
+# Backend (repo root is /work)
+backend/.venv/
+backend/__pycache__/
+backend/*.py[cod]
+
+# Secrets anywhere in the tree
 .env
-.pytest_cache/
+**/.env

@@ -1,7 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 import uvicorn
 
-app = FastAPI()
+from database import Base, SessionLocal, engine
+from models import Release  # loads ORM metadata for create_all
 
 NOW_PLAYING_FEED = [
     {
@@ -51,32 +56,38 @@ NOW_PLAYING_FEED = [
 ]
 
 
-# This is the "Menu" your iPhone app will eventually read
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+def _release_to_api_dict(r: Release) -> dict:
+    return {
+        "title": r.title,
+        "artist": r.artist,
+        "artwork_url": r.artwork_url,
+        "hype_count": r.hype_count,
+        "status": r.status,
+        "countdown": r.countdown,
+    }
+
+
 @app.get("/releases")
-def get_releases():
-    return [
-        {
-            "title": "CHROMAKOPIA",
-            "artist": "Tyler, The Creator",
-            "hype_score": 98,
-            "status": "Dropping Soon",
-            "countdown": "9D 14H"  # Add this key
-        },
-        {
-            "title": "Haram",
-            "artist": "Armand Hammer",
-            "hype_score": 92,
-            "status": "Released",
-            "countdown": "9D 14H"  # Add this key
-        },
-        {
-            "title": "Pray for Paris",
-            "artist": "Westside Gunn",
-            "hype_score": 90,
-            "status": "Dropping Soon",
-            "countdown": "16D 14H"  # Add this key
-        }
-    ]
+def get_releases(db: Session = Depends(get_db)):
+    rows = db.scalars(select(Release).order_by(Release.id)).all()
+    return [_release_to_api_dict(r) for r in rows]
 
 
 @app.get("/feed/now-playing")

@@ -1,0 +1,22 @@
+# Tap In/Hype Music  (name not final) : Project Rules & Architecture
+
+## Project Overview
+- Mobile app for music fans: social networking/music reviewing and real-time artist release notifications. *Letterboxd for Music*
+- Tech Stack: SwiftUI (Frontend), FastAPI/Python (Backend)
+- Aesthetic: Premium, tactile, analog-inspired (Vinyl), luxury yet minimalistic
+
+## Code Standards
+- **SwiftUI:** Use declarative syntax. Prefer `NavigationStack` and `@StateObject` for management. 
+- **Networking:** All API calls must go through `Core/Networking/MusicData.swift`. 
+- **Styling:** Primary accent color is `#FFB300`. Use the `Color(hexString:)` extension.
+- **Python:** Use Pydantic models for request/response validation to match Swift's `Codable` structs.
+
+## File Organization
+- New UI features go in `Features/`.
+- Shared logic (extensions, networking) goes in `Core/`.
+- Keep Python backend logic in the `backend/` directory.
+
+## Interaction Guidelines
+- Before creating a new file, check if a similar component exists in `Core/`.
+- Always update SwiftUI @Previews when modifying View files.
+- If a change affects the data contract, update BOTH Python models and Swift structs.

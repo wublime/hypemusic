@@ -1,11 +1,9 @@
-// Shared Color extension for hex string parsing. Avoids conflicts with any existing init(hex:) by using a distinct initializer name.
 import SwiftUI
 
-public extension Color {
+extension Color {
     /// Initialize a Color from a hex string like "#RRGGBB" or "#RRGGBBAA" (alpha last).
     /// Examples: "#FFB300", "#1A1A1C", "0F0F10", "#FFB300FF".
     init(hexString: String) {
-        // Remove non-alphanumeric characters
         let hex = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "#", with: "")
             .replacingOccurrences(of: "0x", with: "")
@@ -21,7 +19,6 @@ public extension Color {
                 r = (value >> 8) & 0xF
                 g = (value >> 4) & 0xF
                 b = value & 0xF
-                // Expand from 0..15 to 0..255
                 r = (r << 4) | r
                 g = (g << 4) | g
                 b = (b << 4) | b
@@ -35,7 +32,6 @@ public extension Color {
                 b = (value >> 8) & 0xFF
                 a = value & 0xFF
             default:
-                // Unsupported length; default to clear
                 self = .clear
                 return
             }
@@ -44,7 +40,7 @@ public extension Color {
             return
         }
 
-        self = Color(
+        self.init(
             .sRGB,
             red: Double(r) / 255.0,
             green: Double(g) / 255.0,
