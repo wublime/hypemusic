@@ -12,10 +12,13 @@ from auth import create_app_jwt, get_current_user, verify_apple_identity_token
 from database import Base, engine, get_db
 from models import Release, User  # noqa: F401  (Release/User registered on Base)
 from schemas import (
+    AlbumOut,
     AppleAuthIn,
     AppleAuthOut,
+    ArtistOut,
     CheckUsernameOut,
     DevAuthIn,
+    SongOut,
     SpotifyExchangeIn,
     SpotifyExchangeOut,
     UpdateUserIn,
@@ -23,6 +26,7 @@ from schemas import (
     USERNAME_PATTERN,
     user_to_out,
 )
+from spotify_service import spotify_service
 
 NOW_PLAYING_FEED = [
     {
@@ -260,6 +264,37 @@ def spotify_exchange(
     current_user.spotify_refresh_token = refresh
     db.commit()
     return SpotifyExchangeOut(connected=True)
+
+
+# ---------------------------------------------------------------------------
+# Spotify search (server-to-server Client Credentials flow)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/search/albums", response_model=list[AlbumOut])
+def search_albums(query: str):
+    """Proxy Spotify's /v1/search?type=album behind our own server.
+
+    Keeping this server-side means: (a) the client never sees Spotify
+    credentials, (b) we can layer rate limiting/caching later without an
+    iOS release, and (c) we can mix Spotify results with our own DB.
+    """
+    return spotify_service.search_albums(query)
+
+
+@app.get("/api/search/artists", response_model=list[ArtistOut])
+def search_artists(query: str):
+    """Proxy Spotify's /v1/search?type=artist."""
+    return spotify_service.search_artists(query)
+
+
+@app.get("/api/search/songs", response_model=list[SongOut])
+def search_songs(query: str):
+    """Proxy Spotify's /v1/search?type=track.
+
+    Exposed as "songs" because that's the user-facing term in the app.
+    """
+    return spotify_service.search_songs(query)
 
 
 if __name__ == "__main__":

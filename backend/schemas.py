@@ -77,3 +77,44 @@ class SpotifyExchangeOut(BaseModel):
 
 class CheckUsernameOut(BaseModel):
     available: bool
+
+
+class AlbumOut(BaseModel):
+    """Simplified album record returned by `/api/search/albums`.
+
+    Mirrors what the iOS `Album` struct expects: just enough to render a
+    card (cover + name + artist + year).
+    """
+
+    name: str
+    artist: str
+    release_date: str
+    spotify_id: str
+    image_url: Optional[str] = None
+
+
+class ArtistOut(BaseModel):
+    """Simplified artist record returned by `/api/search/artists`."""
+
+    name: str
+    spotify_id: str
+    image_url: Optional[str] = None
+    genres: list[str] = []
+    follower_count: Optional[int] = None
+
+
+class SongOut(BaseModel):
+    """Simplified track record returned by `/api/search/songs`.
+
+    Spotify calls these "tracks"; we expose them as "songs" because that's
+    the term the user-facing UI uses.
+    """
+
+    name: str
+    artist: str
+    album: str
+    release_date: str
+    spotify_id: str
+    image_url: Optional[str] = None
+    preview_url: Optional[str] = None
+    duration_ms: int = 0
