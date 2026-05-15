@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, func, text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,8 +19,29 @@ class Release(Base):
         Integer, nullable=False, default=0, server_default=text("0")
     )
     artwork_url: Mapped[str] = mapped_column(Text, nullable=False)
+    release_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(128), nullable=False)
     countdown: Mapped[str] = mapped_column(String(128), nullable=False)
+
+
+class DropRequest(Base):
+    """User-suggested upcoming albums for the curator to review."""
+
+    __tablename__ = "drop_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    album_title: Mapped[str] = mapped_column(String(512), nullable=False)
+    artist_name: Mapped[str] = mapped_column(String(512), nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class User(Base):

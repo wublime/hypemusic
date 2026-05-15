@@ -1,16 +1,17 @@
 import os
 import re
+import time
 from contextlib import asynccontextmanager
 
 import httpx
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from auth import create_app_jwt, get_current_user, verify_apple_identity_token
-from database import Base, engine, get_db
-from models import Release, User  # noqa: F401  (Release/User registered on Base)
+from database import Base, engine, ensure_schema, get_db
+from models import DropRequest, Release, User  # noqa: F401  (models registered on Base)
 from schemas import (
     AlbumOut,
     AppleAuthIn,
@@ -18,6 +19,9 @@ from schemas import (
     ArtistOut,
     CheckUsernameOut,
     DevAuthIn,
+    DropRequestAdminOut,
+    DropRequestCreateIn,
+    DropRequestCreatedOut,
     SongOut,
     SpotifyExchangeIn,
     SpotifyExchangeOut,
@@ -27,58 +31,67 @@ from schemas import (
     user_to_out,
 )
 from spotify_service import spotify_service
+from spotify_user import (
+    fetch_currently_playing,
+    parse_currently_playing_payload,
+    refresh_user_access_token,
+)
 
-NOW_PLAYING_FEED = [
-    {
-        "user_id": "user_alex",
-        "username": "@alexm",
-        "song_title": "FE!N",
-        "artist_name": "Travis Scott",
-        "artwork_url": "https://picsum.photos/seed/hypealex/600/600",
-        "is_playing": True,
-        "updated_at": "2026-05-09T12:00:00Z",
-        "fire_count": 14,
-        "viewer_reacted": False,
-    },
-    {
-        "user_id": "user_nina",
-        "username": "@ninab",
-        "song_title": "Vampire",
-        "artist_name": "Olivia Rodrigo",
-        "artwork_url": "https://picsum.photos/seed/hypenina/600/600",
-        "is_playing": True,
-        "updated_at": "2026-05-09T12:02:00Z",
-        "fire_count": 31,
-        "viewer_reacted": True,
-    },
-    {
-        "user_id": "user_jo",
-        "username": "@jothekid",
-        "song_title": "SICKO MODE",
-        "artist_name": "Travis Scott",
-        "artwork_url": "https://picsum.photos/seed/hypejo/600/600",
-        "is_playing": False,
-        "updated_at": "2026-05-09T11:45:00Z",
-        "fire_count": 8,
-        "viewer_reacted": False,
-    },
-    {
-        "user_id": "user_maya",
-        "username": "@mayacodes",
-        "song_title": "After Hours",
-        "artist_name": "The Weeknd",
-        "artwork_url": "https://picsum.photos/seed/hypemaya/600/600",
-        "is_playing": True,
-        "updated_at": "2026-05-09T12:05:00Z",
-        "fire_count": 22,
-        "viewer_reacted": False,
-    },
-]
+# Per ``friend_id`` (``str`` user UUID) fire counts. Solo dev: only your row appears;
+# when you add friends, any authenticated user can react to any listed ``user_id``.
+NOW_PLAYING_REACTIONS: dict[str, dict[str, int | bool]] = {}
+
+
+def _reaction_row(friend_id: str) -> dict[str, int | bool]:
+    if friend_id not in NOW_PLAYING_REACTIONS:
+        NOW_PLAYING_REACTIONS[friend_id] = {"fire_count": 0, "viewer_reacted": False}
+    return NOW_PLAYING_REACTIONS[friend_id]
+
+
+def _utc_timestamp() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _feed_row(
+    user: User,
+    *,
+    song_title: str,
+    artist_name: str,
+    artwork_url: str,
+    is_playing: bool,
+    progress_ms: int | None,
+    duration_ms: int | None,
+    progress_snapshot_ms: int | None,
+) -> dict:
+    uid = str(user.id)
+    handle = f"@{user.username}" if user.username else "@you"
+    r = _reaction_row(uid)
+    row: dict = {
+        "user_id": uid,
+        "username": handle,
+        "song_title": song_title,
+        "artist_name": artist_name,
+        "artwork_url": artwork_url,
+        "is_playing": is_playing,
+        "updated_at": _utc_timestamp(),
+        "fire_count": int(r["fire_count"]),
+        "viewer_reacted": bool(r["viewer_reacted"]),
+    }
+    if progress_ms is not None:
+        row["progress_ms"] = progress_ms
+    if duration_ms is not None:
+        row["duration_ms"] = duration_ms
+    if progress_snapshot_ms is not None:
+        row["progress_snapshot_ms"] = progress_snapshot_ms
+    return row
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    ensure_schema()
     yield
 
 
@@ -91,6 +104,7 @@ def _release_to_api_dict(r: Release) -> dict:
         "artist": r.artist,
         "artwork_url": r.artwork_url,
         "hype_count": r.hype_count,
+        "release_date": r.release_date.isoformat() if r.release_date else None,
         "status": r.status,
         "countdown": r.countdown,
     }
@@ -102,26 +116,192 @@ def get_releases(db: Session = Depends(get_db)):
     return [_release_to_api_dict(r) for r in rows]
 
 
+@app.post("/releases/drop-requests", response_model=DropRequestCreatedOut)
+def create_drop_request(
+    body: DropRequestCreateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    album_title = body.album_title.strip()
+    artist_name = body.artist_name.strip()
+    if not album_title or not artist_name:
+        raise HTTPException(
+            status_code=422,
+            detail="Album title and artist name cannot be empty",
+        )
+    note_raw = (body.note or "").strip()
+    note = note_raw or None
+
+    row = DropRequest(
+        user_id=current_user.id,
+        album_title=album_title,
+        artist_name=artist_name,
+        note=note,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return DropRequestCreatedOut(id=row.id)
+
+
+@app.get("/admin/drop-requests", response_model=list[DropRequestAdminOut])
+def list_drop_requests_for_admin(
+    db: Session = Depends(get_db),
+    x_admin_secret: str | None = Header(default=None, alias="X-Admin-Secret"),
+):
+    """List recent suggestions. Set `ADMIN_DROP_REQUEST_SECRET` in the server
+    env and pass the same value in the ``X-Admin-Secret`` header (e.g. curl).
+    """
+    expected = (os.environ.get("ADMIN_DROP_REQUEST_SECRET") or "").strip()
+    if not expected or (x_admin_secret or "").strip() != expected:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    stmt = (
+        select(DropRequest, User.username, User.email)
+        .join(User, User.id == DropRequest.user_id)
+        .order_by(DropRequest.created_at.desc())
+        .limit(500)
+    )
+    rows = db.execute(stmt).all()
+    return [
+        DropRequestAdminOut(
+            id=dr.id,
+            user_id=dr.user_id,
+            username=username,
+            email=email,
+            album_title=dr.album_title,
+            artist_name=dr.artist_name,
+            note=dr.note,
+            created_at=dr.created_at,
+        )
+        for dr, username, email in rows
+    ]
+
+
 @app.get("/feed/now-playing")
-def get_feed_now_playing():
-    return NOW_PLAYING_FEED
+def get_feed_now_playing(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Live Hype Feed row for the signed-in user (Spotify currently playing)."""
+    db.refresh(current_user)
+    if not current_user.spotify_refresh_token:
+        return [
+            _feed_row(
+                current_user,
+                song_title="Connect Spotify",
+                artist_name="Open Profile → Music services to link your account",
+                artwork_url="",
+                is_playing=False,
+                progress_ms=None,
+                duration_ms=None,
+                progress_snapshot_ms=None,
+            )
+        ]
+
+    try:
+        access, new_refresh = refresh_user_access_token(current_user.spotify_refresh_token)
+        if new_refresh:
+            current_user.spotify_refresh_token = new_refresh
+            db.commit()
+    except HTTPException as exc:
+        # Missing server config must surface; Spotify refresh failures become feed UX,
+        # not a generic 502 for the whole tab.
+        if exc.status_code == 503:
+            raise
+        return [
+            _feed_row(
+                current_user,
+                song_title="Reconnect Spotify",
+                artist_name="We couldn’t refresh your Spotify session — open Profile and link again.",
+                artwork_url="",
+                is_playing=False,
+                progress_ms=None,
+                duration_ms=None,
+                progress_snapshot_ms=None,
+            )
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Spotify token failed: {e}")
+
+    body, status = fetch_currently_playing(access)
+    if status == 401:
+        return [
+            _feed_row(
+                current_user,
+                song_title="Reconnect Spotify",
+                artist_name="Your session expired — link again from Profile",
+                artwork_url="",
+                is_playing=False,
+                progress_ms=None,
+                duration_ms=None,
+                progress_snapshot_ms=None,
+            )
+        ]
+
+    if body is None:
+        if status == 204:
+            now_ms = int(time.time() * 1000)
+            return [
+                _feed_row(
+                    current_user,
+                    song_title="Nothing playing",
+                    artist_name="Start a track in Spotify on this phone",
+                    artwork_url="",
+                    is_playing=False,
+                    progress_ms=0,
+                    duration_ms=0,
+                    progress_snapshot_ms=now_ms,
+                )
+            ]
+        return [
+            _feed_row(
+                current_user,
+                song_title="Couldn’t reach Spotify",
+                artist_name="Check your connection and try again",
+                artwork_url="",
+                is_playing=False,
+                progress_ms=None,
+                duration_ms=None,
+                progress_snapshot_ms=None,
+            )
+        ]
+
+    parsed = parse_currently_playing_payload(body)
+    snap = int(parsed.get("progress_snapshot_ms") or 0)
+    if snap <= 0:
+        snap = int(time.time() * 1000)
+
+    return [
+        _feed_row(
+            current_user,
+            song_title=str(parsed["song_title"]),
+            artist_name=str(parsed["artist_name"]),
+            artwork_url=str(parsed["artwork_url"]),
+            is_playing=bool(parsed["is_playing"]),
+            progress_ms=int(parsed["progress_ms"]),
+            duration_ms=int(parsed["duration_ms"]),
+            progress_snapshot_ms=snap,
+        )
+    ]
 
 
 @app.post("/feed/now-playing/{friend_id}/react")
-def react_fire(friend_id: str):
-    for row in NOW_PLAYING_FEED:
-        if row["user_id"] == friend_id:
-            was_reacted = row["viewer_reacted"]
-            row["viewer_reacted"] = not was_reacted
-            if row["viewer_reacted"] and not was_reacted:
-                row["fire_count"] += 1
-            elif was_reacted and not row["viewer_reacted"]:
-                row["fire_count"] = max(0, row["fire_count"] - 1)
-            return {
-                "fire_count": row["fire_count"],
-                "viewer_reacted": row["viewer_reacted"],
-            }
-    raise HTTPException(status_code=404, detail="friend not found")
+def react_fire(
+    friend_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    row = _reaction_row(friend_id)
+    was_reacted = bool(row["viewer_reacted"])
+    row["viewer_reacted"] = not was_reacted
+    if row["viewer_reacted"] and not was_reacted:
+        row["fire_count"] = int(row["fire_count"]) + 1
+    elif was_reacted and not row["viewer_reacted"]:
+        row["fire_count"] = max(0, int(row["fire_count"]) - 1)
+    return {
+        "fire_count": int(row["fire_count"]),
+        "viewer_reacted": bool(row["viewer_reacted"]),
+    }
 
 
 # ---------------------------------------------------------------------------

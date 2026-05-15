@@ -118,3 +118,29 @@ class SongOut(BaseModel):
     image_url: Optional[str] = None
     preview_url: Optional[str] = None
     duration_ms: int = 0
+
+
+class DropRequestCreateIn(BaseModel):
+    """Authenticated client suggests an album for the releases feed."""
+
+    album_title: str = Field(min_length=1, max_length=512)
+    artist_name: str = Field(min_length=1, max_length=512)
+    note: Optional[str] = Field(default=None, max_length=4000)
+
+
+class DropRequestCreatedOut(BaseModel):
+    id: int
+    message: str = "Thanks — we'll take a look."
+
+
+class DropRequestAdminOut(BaseModel):
+    """Row returned to the curator via `GET /admin/drop-requests`."""
+
+    id: int
+    user_id: UUID
+    username: Optional[str] = None
+    email: Optional[str] = None
+    album_title: str
+    artist_name: str
+    note: Optional[str] = None
+    created_at: datetime
