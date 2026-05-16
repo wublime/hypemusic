@@ -4,9 +4,14 @@ struct ReleaseCard: View {
     let title: String
     let artist: String
     let hypeCount: Int
-    let countdown: String
-    let status: String
     let artworkURL: String
+    /// `yyyy-MM-dd` from API; countdown / OUT NOW copy is derived on-device.
+    let releaseDateYYYYMMDD: String?
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appPalette) private var palette
+
+    private var accent: Color { palette.accent }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -18,21 +23,18 @@ struct ReleaseCard: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                 case .failure(_):
-                    // Fallback if link is broken
                     Color.gray.opacity(0.3)
                         .overlay(Image(systemName: "music.note").foregroundColor(.gray))
                 case .empty:
-                    // Loading state
                     ProgressView()
-                        .tint(.yellow)
+                        .tint(palette.accent)
                 @unknown default:
                     EmptyView()
                 }
             }
-            .frame(width: 150, height: 150) // Keeps it a perfect square
+            .frame(width: 150, height: 150)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay {
-                // Keep your gradient so the badges/text are readable
                 LinearGradient(
                     colors: [Color.black.opacity(0.0), Color.black.opacity(0.7)],
                     startPoint: .top,
@@ -41,43 +43,49 @@ struct ReleaseCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .overlay(alignment: .topTrailing) {
-                // Hype Score Badge
                 Text("\(hypeCount)")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.black)
                     .padding(6)
-                    .background(Color(hexString: "#FFB300"))
+                    .background(accent)
                     .clipShape(Circle())
                     .padding(8)
             }
             .overlay(alignment: .bottomLeading) {
-                // Timer Badge
-                Text(countdown)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(Color(hexString: "#FFB300"))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.black.opacity(0.7))
-                    .cornerRadius(4)
-                    .padding(8)
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    let text = ReleaseSchedule.badgeText(
+                        releaseDateYYYYMMDD: releaseDateYYYYMMDD,
+                        now: context.date
+                    )
+                    Text(text)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(accent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.black.opacity(0.7))
+                        .cornerRadius(4)
+                        .padding(8)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
+                        .multilineTextAlignment(.leading)
+                }
             }
-            
-            // Text Surface
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(palette.primaryText(for: colorScheme))
                     .lineLimit(1)
-                
+
                 Text(artist)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.gray)
+                    .foregroundColor(palette.secondaryText(for: colorScheme))
                     .lineLimit(1)
             }
             .padding(10)
         }
         .frame(width: 150)
-        .background(Color(hexString: "#1A1A1C"))
+        .background(palette.card(for: colorScheme))
         .cornerRadius(16)
     }
 }

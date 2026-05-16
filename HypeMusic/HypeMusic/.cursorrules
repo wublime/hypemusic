@@ -1,22 +1,32 @@
-# Tap In/Hype Music  (name not final) : Project Rules & Architecture
+# Hype Music — Project Rules & Architecture
 
 ## Project Overview
 - Mobile app for music fans: social networking/music reviewing and real-time artist release notifications. *Letterboxd for Music*
-- Tech Stack: SwiftUI (Frontend), FastAPI/Python (Backend)
+- Tech Stack: SwiftUI (Frontend), FastAPI/Python (Backend in `../../backend/`)
+- Bundle ID: `com.jacobhancock.HypeMusic`
 - Aesthetic: Premium, tactile, analog-inspired (Vinyl), luxury yet minimalistic
 
 ## Code Standards
-- **SwiftUI:** Use declarative syntax. Prefer `NavigationStack` and `@StateObject` for management. 
-- **Networking:** All API calls must go through `Core/Networking/MusicData.swift`. 
+- **SwiftUI:** Use declarative syntax. Prefer `NavigationStack` and `@StateObject` for management.
+- **Networking:** All API calls must go through `Core/Networking/MusicData.swift` (`APIConfig`, `API` enum). Do not scatter `URLSession` calls in views.
+- **Auth:** Use `AuthManager` (`Core/Auth/`). Sign in with Apple posts to `POST /auth/apple`; session token lives in Keychain.
 - **Styling:** Primary accent color is `#FFB300`. Use the `Color(hexString:)` extension.
-- **Python:** Use Pydantic models for request/response validation to match Swift's `Codable` structs.
+- **Python:** Use Pydantic models for request/response validation to match Swift's `Codable` structs. Run backend with `backend/.venv` only.
+
+## Local development
+- **API base URL:** `Info.plist` → `APIBaseURL`. Simulator: `http://127.0.0.1:8000`. Physical device: `http://<mac-lan-ip>:8000` (rebuild after changing). Documented in `README.md`.
+- **Backend:** `cd ../../backend && source .venv/bin/activate && set -a && source .env && set +a && .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload`
+- **Apple auth on Mac:** Python must trust HTTPS to `appleid.apple.com` (run Install Certificates.command if JWKS fetch fails with `CERTIFICATE_VERIFY_FAILED`).
+- **`.env`:** `APPLE_AUDIENCE` must match bundle ID. `JWT_SECRET` for app-issued session JWTs. `DEV_AUTH_ENABLED=1` only for simulator dev bypass.
+- When debugging sign-in, check uvicorn logs for `POST /auth/apple` (network) vs 401 body (Apple audience / SSL / token).
 
 ## File Organization
 - New UI features go in `Features/`.
-- Shared logic (extensions, networking) goes in `Core/`.
-- Keep Python backend logic in the `backend/` directory.
+- Shared logic (extensions, networking, auth) goes in `Core/`.
+- Keep Python backend logic in the `backend/` directory at repo root.
 
 ## Interaction Guidelines
 - Before creating a new file, check if a similar component exists in `Core/`.
 - Always update SwiftUI @Previews when modifying View files.
-- If a change affects the data contract, update BOTH Python models and Swift structs.
+- If a change affects the data contract, update BOTH Python models (`backend/schemas.py`, `backend/models.py`) and Swift structs in `MusicData.swift`.
+- Do not commit `backend/.env` or secrets. Prefer `backend/.env.example` for new env vars.

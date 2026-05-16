@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 import uuid
@@ -15,13 +16,21 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User
 
+logger = logging.getLogger(__name__)
+
 JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-me")
 JWT_ALG = "HS256"
 JWT_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 days
 
 APPLE_ISSUER = "https://appleid.apple.com"
-APPLE_AUDIENCE = os.environ.get("APPLE_AUDIENCE", "com.jacobhancock.HypeMusic")
 APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
+# Comma-separated bundle IDs / Services IDs, e.g.
+# APPLE_AUDIENCE=com.jacobhancock.HypeMusic,com.jacobhancock.HypeMusic.signin
+APPLE_AUDIENCES = [
+    a.strip()
+    for a in os.environ.get("APPLE_AUDIENCE", "com.jacobhancock.HypeMusic").split(",")
+    if a.strip()
+]
 
 
 _jwk_client: Optional[PyJWKClient] = None
@@ -35,6 +44,19 @@ def _get_jwk_client() -> PyJWKClient:
     return _jwk_client
 
 
+def _token_audience_hint(identity_token: str) -> str:
+    """Best-effort read of `aud` for clearer configuration errors."""
+    try:
+        unverified = jwt.decode(
+            identity_token,
+            options={"verify_signature": False},
+            algorithms=["RS256"],
+        )
+        return str(unverified.get("aud"))
+    except Exception:
+        return "(unreadable)"
+
+
 def verify_apple_identity_token(identity_token: str) -> dict:
     """Verify Apple's identity token signature, issuer, audience, expiry.
 
@@ -46,14 +68,25 @@ def verify_apple_identity_token(identity_token: str) -> dict:
             identity_token,
             signing_key,
             algorithms=["RS256"],
-            audience=APPLE_AUDIENCE,
+            audience=APPLE_AUDIENCES,
             issuer=APPLE_ISSUER,
+            leeway=60,
         )
         return payload
     except jwt.PyJWTError as e:
+        token_aud = _token_audience_hint(identity_token)
+        logger.warning(
+            "Apple identity token rejected: %s (token aud=%s, expected one of %s)",
+            e,
+            token_aud,
+            APPLE_AUDIENCES,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid Apple identity token: {e}",
+            detail=(
+                f"Invalid Apple identity token: {e}. "
+                f"Token aud={token_aud!r}; set APPLE_AUDIENCE in backend/.env to match."
+            ),
         )
 
 

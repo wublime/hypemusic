@@ -53,9 +53,6 @@ class AppleAuthOut(BaseModel):
 
 
 class DevAuthIn(BaseModel):
-    """Dev-only: lets the simulator/free-team build mint a session without Apple."""
-
-    device_id: str = Field(min_length=1, max_length=128)
     email: Optional[str] = None
 
 

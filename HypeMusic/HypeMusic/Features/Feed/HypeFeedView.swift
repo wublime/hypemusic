@@ -2,6 +2,9 @@ import SwiftUI
 
 struct HypeFeedView: View {
     @ObservedObject var networkManager: NetworkManager
+    @EnvironmentObject private var auth: AuthManager
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appPalette) private var palette
 
     private var items: [FriendNowPlaying] { networkManager.friendFeed }
 
@@ -9,30 +12,53 @@ struct HypeFeedView: View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
                 if items.isEmpty {
-                    VStack {
-                        Spacer()
-                        ProgressView()
-                            .tint(.white)
-                        Spacer()
-                    }
-                    .frame(width: geo.size.width, height: geo.size.height)
+                    emptyState(width: geo.size.width, height: geo.size.height)
                 } else {
                     verticalReelScroll(geo: geo)
                 }
 
-                Text("Friends now playing")
-                    .font(.system(size: 11, weight: .black))
-                    .tracking(1.5)
-                    .foregroundColor(.gray)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("HYPE FEED")
+                        .font(.system(size: 11, weight: .black))
+                        .tracking(1.5)
+                        .foregroundColor(palette.secondaryText(for: colorScheme))
+                    Text("You’re live — friends land here next")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(palette.secondaryText(for: colorScheme).opacity(0.85))
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task {
-            await networkManager.fetchFriendFeed()
+        .task(id: auth.accessToken) {
+            await networkManager.fetchFriendFeed(accessToken: auth.accessToken)
+            await pollFeedWhileVisible()
+        }
+    }
+
+    private func emptyState(width: CGFloat, height: CGFloat) -> some View {
+        VStack(spacing: 14) {
+            Spacer()
+            Image(systemName: "waveform.path")
+                .font(.system(size: 40, weight: .light))
+                .foregroundColor(palette.accent.opacity(0.7))
+            Text("Sign in and connect Spotify\nto see your live playback.")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(palette.secondaryText(for: colorScheme))
+                .multilineTextAlignment(.center)
+            Spacer()
+        }
+        .frame(width: width, height: height)
+    }
+
+    /// Refreshes Spotify-backed rows every few seconds while this view’s task runs.
+    private func pollFeedWhileVisible() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            await networkManager.fetchFriendFeed(accessToken: auth.accessToken)
         }
     }
 
@@ -47,7 +73,10 @@ struct HypeFeedView: View {
                     ForEach(items) { entry in
                         FriendNowPlayingCard(entry: entry) {
                             Task {
-                                await networkManager.toggleFireReaction(forFriendId: entry.id)
+                                await networkManager.toggleFireReaction(
+                                    forFriendId: entry.id,
+                                    accessToken: auth.accessToken
+                                )
                             }
                         }
                         .padding(.horizontal, 20)
@@ -63,7 +92,10 @@ struct HypeFeedView: View {
                     ForEach(items) { entry in
                         FriendNowPlayingCard(entry: entry) {
                             Task {
-                                await networkManager.toggleFireReaction(forFriendId: entry.id)
+                                await networkManager.toggleFireReaction(
+                                    forFriendId: entry.id,
+                                    accessToken: auth.accessToken
+                                )
                             }
                         }
                         .padding(.horizontal, 20)
@@ -78,7 +110,8 @@ struct HypeFeedView: View {
 
 #Preview {
     ZStack {
-        Color(hexString: "#0F0F10").ignoresSafeArea()
+        AppPalette(preference: .hype).background(for: .dark).ignoresSafeArea()
         HypeFeedView(networkManager: NetworkManager())
+            .environmentObject(AuthManager())
     }
 }

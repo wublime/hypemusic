@@ -14,6 +14,8 @@ struct ReviewPost: Identifiable {
 
 struct ReviewCard: View {
     let post: ReviewPost
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appPalette) private var palette
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -22,11 +24,11 @@ struct ReviewCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(post.albumTitle)
                         .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(palette.primaryText(for: colorScheme))
                         .lineLimit(1)
                     Text("by \(post.artist)")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.gray)
+                        .foregroundColor(palette.secondaryText(for: colorScheme))
                         .lineLimit(1)
                 }
                 Spacer()
@@ -36,7 +38,7 @@ struct ReviewCard: View {
             // Body
             Text(post.body)
                 .font(.system(size: 13))
-                .foregroundColor(.white)
+                .foregroundColor(palette.primaryText(for: colorScheme))
                 .lineLimit(4)
 
             // Meta row
@@ -44,7 +46,7 @@ struct ReviewCard: View {
                 Avatar()
                 Text(post.username)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.gray)
+                    .foregroundColor(palette.secondaryText(for: colorScheme))
                 Spacer()
                 ActionStat(system: "eye", value: post.views)
                 ActionStat(system: "heart", value: post.likes)
@@ -52,20 +54,21 @@ struct ReviewCard: View {
             }
         }
         .padding(16)
-        .background(Color(hexString: "#1A1A1C"))
+        .background(palette.card(for: colorScheme))
         .cornerRadius(12)
     }
 }
 
 struct ScoreBadge: View {
     let score: Double
+    @Environment(\.appPalette) private var palette
     var body: some View {
         Text(String(format: "%.1f/10", score))
             .font(.system(size: 13, weight: .black))
             .foregroundColor(.black)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Color(hexString: "#FFB300"))
+            .background(palette.accent)
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
@@ -86,14 +89,17 @@ struct Avatar: View {
 struct ActionStat: View {
     let system: String
     let value: Int
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appPalette) private var palette
+
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: system)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.gray)
+                .foregroundColor(palette.secondaryText(for: colorScheme))
             Text("\(value)")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.gray)
+                .foregroundColor(palette.secondaryText(for: colorScheme))
         }
     }
 }
@@ -108,7 +114,7 @@ struct ReviewCard_Previews: PreviewProvider {
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)
-            .background(Color(hexString: "#0F0F10"))
+            .background(AppPalette(preference: .hype).background(for: .dark))
         }
         .background(Color.black)
         .previewDisplayName("ReviewCard - Mock List")

@@ -3,6 +3,8 @@ import SwiftUI
 /// Placeholder + roadmap for Spotify / Apple Music linking (OAuth PKCE, MusicKit, listening snapshots).
 struct MusicServicesConnectSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appPalette) private var palette
 
     var body: some View {
         NavigationStack {
@@ -10,33 +12,33 @@ struct MusicServicesConnectSheet: View {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("Link a music account so friends can see what you are playing on the Hype Feed. Playback is read from the service you connect; Hype stores only snapshots you allow.")
                         .font(.system(size: 14, weight: .regular))
-                        .foregroundColor(.gray)
+                        .foregroundColor(palette.secondaryText(for: colorScheme))
                         .fixedSize(horizontal: false, vertical: true)
 
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Spotify", systemImage: "waveform")
                             .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(palette.primaryText(for: colorScheme))
                         Text("Use OAuth 2 with PKCE in the app, send the refresh token to your backend, then poll Spotify’s currently-playing endpoint or accept POST /users/me/listening updates from the app.")
                             .font(.system(size: 13))
-                            .foregroundColor(.gray)
+                            .foregroundColor(palette.secondaryText(for: colorScheme))
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(hexString: "#1A1A1C"))
+                    .background(palette.card(for: colorScheme))
                     .cornerRadius(12)
 
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Apple Music", systemImage: "music.note.list")
                             .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(palette.primaryText(for: colorScheme))
                         Text("Use MusicKit for the subscriber on this device. Observe ApplicationMusicPlayer (or system music) and publish now-playing to your backend with POST /users/me/listening—Apple does not expose friends’ playback server-side like Spotify.")
                             .font(.system(size: 13))
-                            .foregroundColor(.gray)
+                            .foregroundColor(palette.secondaryText(for: colorScheme))
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(hexString: "#1A1A1C"))
+                    .background(palette.card(for: colorScheme))
                     .cornerRadius(12)
 
                     Button {
@@ -69,17 +71,17 @@ struct MusicServicesConnectSheet: View {
                 }
                 .padding(20)
             }
-            .background(Color(hexString: "#0F0F10"))
+            .background(palette.background(for: colorScheme))
             .navigationTitle("Music services")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
-                        .foregroundColor(Color(hexString: "#FFB300"))
+                        .foregroundColor(palette.accent)
                 }
             }
-            .toolbarBackground(Color(hexString: "#0F0F10"), for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarBackground(palette.background(for: colorScheme), for: .navigationBar)
+            .toolbarColorScheme(colorScheme, for: .navigationBar)
         }
     }
 }

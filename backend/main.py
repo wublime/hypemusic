@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import uuid
 from contextlib import asynccontextmanager
 
 import httpx
@@ -16,9 +17,9 @@ from schemas import (
     AlbumOut,
     AppleAuthIn,
     AppleAuthOut,
+    DevAuthIn,
     ArtistOut,
     CheckUsernameOut,
-    DevAuthIn,
     DropRequestAdminOut,
     DropRequestCreateIn,
     DropRequestCreatedOut,
@@ -304,36 +305,7 @@ def react_fire(
     }
 
 
-# ---------------------------------------------------------------------------
-# Auth + onboarding
-# ---------------------------------------------------------------------------
-
-
-def _dev_auth_enabled() -> bool:
-    return os.environ.get("DEV_AUTH_ENABLED", "").lower() in {"1", "true", "yes"}
-
-
-@app.post("/auth/dev", response_model=AppleAuthOut)
-def auth_dev(body: DevAuthIn, db: Session = Depends(get_db)):
-    """Sign in without Apple. Gated by `DEV_AUTH_ENABLED=1` so it cannot be
-    abused in production. Upserts a `User` keyed on `dev:<device_id>` so the
-    same simulator/device keeps the same account across launches.
-    """
-    if not _dev_auth_enabled():
-        raise HTTPException(status_code=404, detail="Not Found")
-
-    synthetic_sub = f"dev:{body.device_id}"
-    user = db.scalar(select(User).where(User.apple_user_id == synthetic_sub))
-    if user is None:
-        user = User(apple_user_id=synthetic_sub, email=body.email, favorite_genres=[])
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    elif body.email and not user.email:
-        user.email = body.email
-        db.commit()
-        db.refresh(user)
-
+def _issue_auth_response(user: User) -> AppleAuthOut:
     token = create_app_jwt(str(user.id))
     return AppleAuthOut(access_token=token, user=user_to_out(user))
 
@@ -356,8 +328,23 @@ def auth_apple(body: AppleAuthIn, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
 
-    token = create_app_jwt(str(user.id))
-    return AppleAuthOut(access_token=token, user=user_to_out(user))
+    return _issue_auth_response(user)
+
+
+DEV_AUTH_ENABLED = os.environ.get("DEV_AUTH_ENABLED", "0") == "1"
+
+
+@app.post("/auth/dev", response_model=AppleAuthOut)
+def auth_dev(body: DevAuthIn = DevAuthIn(), db: Session = Depends(get_db)):
+    """Local-only session minting when Apple verification is unavailable."""
+    if not DEV_AUTH_ENABLED:
+        raise HTTPException(status_code=404, detail="Not found")
+    apple_sub = f"dev-{uuid.uuid4()}"
+    user = User(apple_user_id=apple_sub, email=body.email, favorite_genres=[])
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return _issue_auth_response(user)
 
 
 @app.get("/users/me", response_model=UserOut)

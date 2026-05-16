@@ -4,12 +4,14 @@ struct ContentView: View {
     @StateObject private var networkManager = NetworkManager()
     @State private var selectedTab = 0
     @State private var discoveryFriendsMode = 0
-    @State private var showCreateSheet = false
+    @State private var showSearchSheet = false
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appPalette) private var palette
 
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hexString: "#0F0F10").ignoresSafeArea()
+                palette.background(for: colorScheme).ignoresSafeArea()
 
                 Group {
                     switch selectedTab {
@@ -33,32 +35,38 @@ struct ContentView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                BottomTabBar(selectedTab: $selectedTab, plusAction: {
-                    showCreateSheet = true
-                })
+                BottomTabBar(
+                    selectedTab: $selectedTab,
+                    colorScheme: colorScheme,
+                    searchAction: {
+                        showSearchSheet = true
+                    }
+                )
             }
             .task {
                 await networkManager.fetchReleases()
             }
-            .sheet(isPresented: $showCreateSheet) {
-                CreateOptionsSheet()
+            .sheet(isPresented: $showSearchSheet) {
+                SearchView()
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Image(systemName: "calendar").foregroundColor(.white)
+                    Image(systemName: "calendar")
+                        .foregroundColor(palette.primaryText(for: colorScheme))
                 }
                 ToolbarItem(placement: .principal) {
                     Text(principalTitle)
                         .font(.system(size: 22, weight: .black))
-                        .foregroundColor(.white)
+                        .foregroundColor(palette.primaryText(for: colorScheme))
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Image(systemName: "gearshape").foregroundColor(.white)
+                    Image(systemName: "gearshape")
+                        .foregroundColor(palette.primaryText(for: colorScheme))
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarColorScheme(colorScheme, for: .navigationBar)
         }
     }
 
@@ -72,84 +80,50 @@ struct ContentView: View {
     }
 }
 
-struct CreateOptionsSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Button {
-                    dismiss()
-                } label: {
-                    Label("Create Post", systemImage: "square.and.pencil")
-                }
-
-                Button {
-                    dismiss()
-                } label: {
-                    Label("Track Release", systemImage: "music.note.list")
-                }
-
-                Button {
-                    dismiss()
-                } label: {
-                    Label("Add to Hype List", systemImage: "star")
-                }
-            }
-            .navigationTitle("create")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("close") { dismiss() }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-    }
-}
-
 struct BottomTabBar: View {
     @Binding var selectedTab: Int
-    var plusAction: () -> Void
+    var colorScheme: ColorScheme
+    var searchAction: () -> Void
+    @Environment(\.appPalette) private var palette
 
-    private let accent = Color(hexString: "#FFB300")
-    private let plusDiameter: CGFloat = 56
+    private var accent: Color { palette.accent }
+    private let centerButtonDiameter: CGFloat = 56
 
     var body: some View {
         ZStack(alignment: .top) {
             Rectangle()
-                .fill(Color(hexString: "#1A1A1C"))
+                .fill(palette.tabBarSurface(for: colorScheme))
                 .overlay(
                     Rectangle()
-                        .fill(Color.white)
-                        .opacity(0.06)
+                        .fill(palette.tabBarTopHairline(for: colorScheme))
                         .frame(height: 0.5),
                     alignment: .top
                 )
                 .ignoresSafeArea(edges: .bottom)
 
             HStack(alignment: .center, spacing: 0) {
-                TabButton(index: 0, title: "Home", system: "house", selectedTab: $selectedTab, accent: accent)
-                TabButton(index: 1, title: "Hype Feed", system: "flame", selectedTab: $selectedTab, accent: accent)
-                Spacer().frame(width: plusDiameter + 16)
-                TabButton(index: 3, title: "Alerts", system: "bell", selectedTab: $selectedTab, accent: accent)
-                TabButton(index: 4, title: "Profile", system: "person", selectedTab: $selectedTab, accent: accent)
+                TabButton(index: 0, title: "Home", system: "house", selectedTab: $selectedTab, accent: accent, colorScheme: colorScheme)
+                TabButton(index: 1, title: "Hype Feed", system: "flame", selectedTab: $selectedTab, accent: accent, colorScheme: colorScheme)
+                Spacer().frame(width: centerButtonDiameter + 16)
+                TabButton(index: 3, title: "Alerts", system: "bell", selectedTab: $selectedTab, accent: accent, colorScheme: colorScheme)
+                TabButton(index: 4, title: "Profile", system: "person", selectedTab: $selectedTab, accent: accent, colorScheme: colorScheme)
             }
             .padding(.horizontal, 24)
             .frame(height: 64)
         }
         .frame(height: 80)
         .overlay(
-            Button(action: plusAction) {
+            Button(action: searchAction) {
                 ZStack {
                     Circle()
                         .fill(accent)
-                        .frame(width: plusDiameter, height: plusDiameter)
-                    Image(systemName: "plus")
+                        .frame(width: centerButtonDiameter, height: centerButtonDiameter)
+                    Image(systemName: "magnifyingglass")
                         .font(.system(size: 22, weight: .black))
                         .foregroundColor(.black)
                 }
             }
+            .accessibilityLabel("Search albums")
             .shadow(color: Color.black.opacity(0.4), radius: 10, x: 0, y: 6)
             .offset(y: -20)
         )
@@ -162,6 +136,10 @@ struct TabButton: View {
     let system: String
     @Binding var selectedTab: Int
     let accent: Color
+    var colorScheme: ColorScheme
+    @Environment(\.appPalette) private var palette
+
+    private var muted: Color { palette.secondaryText(for: colorScheme) }
 
     var body: some View {
         let isActive = selectedTab == index
@@ -171,10 +149,10 @@ struct TabButton: View {
             VStack(spacing: 4) {
                 Image(systemName: system)
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(isActive ? accent : .gray)
+                    .foregroundColor(isActive ? accent : muted)
                 Text(title)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(isActive ? accent : .gray)
+                    .foregroundColor(isActive ? accent : muted)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
@@ -185,4 +163,5 @@ struct TabButton: View {
 
 #Preview {
     ContentView()
+        .environmentObject(AuthManager())
 }
